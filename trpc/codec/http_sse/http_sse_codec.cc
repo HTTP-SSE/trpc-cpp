@@ -18,6 +18,7 @@
 #include "trpc/common/status.h"
 #include "trpc/log/trpc_log.h"
 #include "trpc/util/http/sse/sse_parser.h"
+#include "trpc/util/buffer/noncontiguous_buffer.h"
 
 namespace trpc {
 
@@ -253,20 +254,47 @@ bool HttpSseServerCodec::ZeroCopyDecode(const ServerContextPtr& ctx, std::any&& 
 
   return true;
 }
-
-bool HttpSseServerCodec::ZeroCopyEncode(const ServerContextPtr& ctx, ProtocolPtr& in, NoncontiguousBuffer& out) {
-  auto sse_protocol = std::dynamic_pointer_cast<HttpSseResponseProtocol>(in);
-  if (!sse_protocol) {
-    TRPC_LOG_ERROR("Failed to cast to HttpSseResponseProtocol");
-    return false;
-  }
+//only encode headers nonono
+//bool HttpSseServerCodec::ZeroCopyEncode(const ServerContextPtr& ctx, ProtocolPtr& in, NoncontiguousBuffer& out) {
+  //auto sse_protocol = std::dynamic_pointer_cast<HttpSseResponseProtocol>(in);
+  //if (!sse_protocol) {
+    //TRPC_LOG_ERROR("Failed to cast to HttpSseResponseProtocol");
+    //return false;
+  //}
 
   // Set SSE-specific headers
-  SetSseResponseHeaders(&sse_protocol->response);
+  //SetSseResponseHeaders(&sse_protocol->response);
 
   // Use the parent HTTP codec to encode
-  return HttpServerCodec::ZeroCopyEncode(ctx, in, out);
+  //return HttpServerCodec::ZeroCopyEncode(ctx, in, out);
+//}
+bool HttpSseServerCodec::ZeroCopyEncode(const ServerContextPtr& ctx, ProtocolPtr& in, NoncontiguousBuffer& out) {
+    auto sse_protocol = std::dynamic_pointer_cast<HttpSseResponseProtocol>(in);
+    if (!sse_protocol) {
+        TRPC_LOG_ERROR("Failed to cast to HttpSseResponseProtocol");
+        return false;
+    }
+
+    // 1. 设置 SSE 响应头
+     SetSseResponseHeaders(&sse_protocol->response);
+
+    // 2. 将内容写入 NoncontiguousBufferBuilder
+    //NoncontiguousBufferBuilder builder;
+    //const std::string& content = sse_protocol->response.GetContent();
+   // builder.Append(content.data(), content.size());
+
+    // 3. 获取 NoncontiguousBuffer
+   // out = builder.DestructiveGet();
+    NoncontiguousBufferBuilder builder;
+    const std::string& content = sse_protocol->response.GetContent();
+    std::cout << "[ZeroCopyEncode] content.size() = " << content.size() << std::endl;
+    builder.Append(content.data(), content.size());
+    auto buf = builder.DestructiveGet();
+    std::cout << "[ZeroCopyEncode] buf.ByteSize() = " << buf.ByteSize() << std::endl;
+    out = std::move(buf);
+    return true;
 }
+
 
 ProtocolPtr HttpSseServerCodec::CreateRequestObject() {
   return std::make_shared<HttpSseRequestProtocol>();
