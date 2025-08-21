@@ -12,6 +12,7 @@ cc_library(
         "//trpc/codec/http:http_client_codec",
         "//trpc/codec/http:http_server_codec",
         "//trpc/codec/http:http_protocol",
+        "//trpc/util/buffer:noncontiguous_buffer",
         "//trpc/common:status",
         "//trpc/log:trpc_log",
         "//trpc/util/http/sse:http_sse",
