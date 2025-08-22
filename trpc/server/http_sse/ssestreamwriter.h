@@ -21,7 +21,6 @@ class SseStreamWriter : public std::enable_shared_from_this<SseStreamWriter> {
   }
 
   ~SseStreamWriter() { Close(); }
-
   bool Write(const trpc::http::sse::SseEvent& event) {
     std::lock_guard<std::mutex> lk(mu_);
     std::cout << "[Write] Acquired lock, open_ = " << open_.load() << std::endl;
@@ -67,7 +66,59 @@ class SseStreamWriter : public std::enable_shared_from_this<SseStreamWriter> {
         return false;
     }
 }
+ /// ========= 新增 API #1 =========
+  /// 业务提供已经序列化好的 SSE 文本（string），我们会把它放入 HttpSseResponseProtocol，
+  /// 通过 codec 封装 transport-level buffer，再发送（保留 headers）。
+  bool WriteRawAsSse(const std::string& sse_payload) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!open_.load(std::memory_order_acquire)) return false;
+    if (!ctx_) return false;
 
+    auto proto = std::make_shared<::trpc::HttpSseResponseProtocol>();
+    // 把业务 bytes 当作 SSE 内容（字符串）
+    proto->response.SetContent(sse_payload);
+    proto->response.SetMimeType("text/event-stream");
+
+    ::trpc::ProtocolPtr p = proto;
+    ::trpc::HttpSseServerCodec codec;
+    ::trpc::NoncontiguousBuffer out_buf;
+    bool ok = codec.ZeroCopyEncode(ctx_, p, out_buf);
+    std::cout << "[WriteRawAsSse] ZeroCopyEncode returned " << ok
+              << ", out_buf.blocks()=" << out_buf.size()
+              << ", out_buf.ByteSize()=" << out_buf.ByteSize() << std::endl;
+    if (!ok) {
+      open_.store(false);
+      return false;
+    }
+
+    Status s = ctx_->SendResponse(std::move(out_buf));
+    if (!s.OK()) {
+      std::cout << "[WriteRawAsSse] SendResponse non-OK: " << s.ToString() << std::endl;
+      open_.store(false);
+      return false;
+    }
+    return true;
+  }
+
+  /// ========= 新增 API #2 =========
+  /// 业务已经构造好了 transport-level `NoncontiguousBuffer`（包含协议头 + body），
+  /// 调用此方法会直接发送（不再经过 codec）。谨慎使用：适合业务自行构造完整 transport 内容的场景。
+  bool WriteRawBuffer(::trpc::NoncontiguousBuffer&& transport_buf) {
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!open_.load(std::memory_order_acquire)) return false;
+    if (!ctx_) return false;
+
+    std::cout << "[WriteRawBuffer] sending transport buffer blocks=" << transport_buf.size()
+              << ", bytes=" << transport_buf.ByteSize() << std::endl;
+
+    Status s = ctx_->SendResponse(std::move(transport_buf));
+    if (!s.OK()) {
+      std::cout << "[WriteRawBuffer] SendResponse non-OK: " << s.ToString() << std::endl;
+      open_.store(false);
+      return false;
+    }
+    return true;
+  }
 
 //  std::future<bool> WriteAsync(const SseEvent& event) {
   //  auto self = shared_from_this();
