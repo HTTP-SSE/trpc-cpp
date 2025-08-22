@@ -16,7 +16,7 @@ cc_test(
     name = "http_sse_stream_proxy_test",
     srcs = ["http_sse_stream_proxy_test.cc"],
     deps = [
-        "//trpc/client/http_sse:http_sse_stream_proxy",
+        "//trpc/client/sse:http_sse_stream_proxy",
         "//trpc/client:make_client_context",
         "//trpc/client:service_proxy_option_setter",
         "//trpc/codec:codec_manager",

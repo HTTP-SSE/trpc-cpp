@@ -9,7 +9,7 @@
 // A copy of the Apache 2.0 License is included in this file.
 //
 
-#include "trpc/client/http_sse/http_sse_stream_proxy.h"
+#include "trpc/client/sse/http_sse_stream_proxy.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"

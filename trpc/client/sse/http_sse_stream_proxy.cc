@@ -9,7 +9,7 @@
 // A copy of the Apache 2.0 License is included in this file.
 //
 
-#include "trpc/client/http_sse/http_sse_stream_proxy.h"
+#include "trpc/client/sse/http_sse_stream_proxy.h"
 
 #include "trpc/codec/codec_helper.h"
 #include "trpc/codec/http_sse/http_sse_codec.h"
