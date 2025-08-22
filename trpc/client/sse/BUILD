@@ -20,6 +20,7 @@ cc_test(
         "//trpc/client:make_client_context",
         "//trpc/client:service_proxy_option_setter",
         "//trpc/codec:codec_manager",
+        "//trpc/util/http/sse:http_sse_parser",
         "//trpc/codec/http:http_client_codec",
         "//trpc/common/config:trpc_config",
         "//trpc/future:future_utility",
