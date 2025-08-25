@@ -1,0 +1,39 @@
+global:
+  namespace: Development
+  env_name: test
+  threadmodel:
+    default:
+      - instance_name: default_instance
+        io_handle_type: merge
+        io_thread_num: 1
+
+server:
+  app: stock_price_sse_server
+  server: stock_price_sse_server
+  service:
+    - name: stock_price_sse_service
+      protocol: http
+      network: tcp
+      port: 8080
+      max_conn_num: 10000
+      idle_time: 60000
+      timeout: 5000
+      disable_request_timeout: false
+      max_packet_size: 10000000
+      recv_buffer_size: 8192
+      send_queue_capacity: 0
+      send_queue_timeout: 3000
+      accept_thread_num: 1
+      threadmodel_instance_name: default_instance
+
+client:
+  threadmodel_instance_name: default_instance
+  service:
+    - name: stock_price_sse_service
+      target: 127.0.0.1:8080
+      protocol: http_sse
+      network: tcp
+      conn_type: long
+      timeout: 60000
+      load_balance_name: direct
+      threadmodel_instance_name: default_instance

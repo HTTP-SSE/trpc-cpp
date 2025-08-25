@@ -29,22 +29,8 @@ using namespace stream;
 class HttpSseStreamProxyTest : public ::testing::Test {
  public:
   void SetUp() override {
-    // Create service proxy option
-    auto option = std::make_shared<ServiceProxyOption>();
-    trpc::detail::SetDefaultOption(option);
-    option->name = "sse_service";
-    option->caller_name = "";
-    option->codec_name = "http";
-    option->conn_type = "long";
-    option->network = "tcp";
-    option->timeout = 1000;
-    option->target = "127.0.0.1:10003";
-    option->selector_name = "direct";
-
-    // Create proxy instance with the option
+    // Create a simple proxy instance for basic testing
     proxy_ = std::make_shared<HttpSseStreamProxy>();
-    // For testing purposes, we'll skip setting the option since it's not critical for our tests
-    // The main functionality we're testing doesn't depend on the service proxy option
   }
 
   void TearDown() override {
@@ -137,6 +123,23 @@ TEST_F(HttpSseStreamProxyTest, TestTimeoutConfiguration) {
   
   // Verify this is different from the default timeout in the option
   EXPECT_GT(ctx->GetTimeout(), 1000);  // Should be longer than the 1-second default
+}
+
+TEST_F(HttpSseStreamProxyTest, TestBasicFunctionality) {
+  // Test basic functionality without complex initialization
+  auto ctx = MakeRefCounted<ClientContext>();
+  
+  // Test SetupSseParameters
+  bool setup_result = proxy_->SetupSseParameters(ctx);
+  EXPECT_TRUE(setup_result);
+  
+  // Test CreateSseRequestProtocol
+  auto protocol = proxy_->CreateSseRequestProtocol();
+  EXPECT_NE(protocol, nullptr);
+  
+  // Test that we can create a context and it's valid
+  EXPECT_NE(ctx, nullptr);
+  EXPECT_TRUE(setup_result);
 }
 
 }  // namespace trpc::testing

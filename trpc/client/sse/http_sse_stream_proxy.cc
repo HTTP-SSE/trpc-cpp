@@ -17,6 +17,7 @@
 #include "trpc/log/logging.h"
 #include "trpc/stream/http/http_client_stream.h"
 #include "trpc/util/http/method.h"
+#include "trpc/runtime/threadmodel/common/worker_thread.h"
 
 namespace trpc::stream {
 
@@ -48,6 +49,17 @@ HttpClientStreamReaderWriter HttpSseStreamProxy::GetSyncStreamReaderWriter(const
 
   // Fill client context with service proxy options
   FillClientContext(ctx);
+
+  // Check if we're in the correct thread context for stream creation
+  auto current_thread = trpc::WorkerThread::GetCurrentWorkerThread();
+  bool in_merge_thread = current_thread && (current_thread->Role() == trpc::kIoAndHandle);
+  
+  if (!in_merge_thread) {
+    // For now, just return an error indicating that merge thread context is required
+    TRPC_LOG_ERROR("SseStreamProxy: Stream creation must be called from a merge thread");
+    return HttpClientStreamReaderWriter(MakeRefCounted<HttpClientStream>(
+        Status(static_cast<int>(codec::ClientRetCode::ENCODE_ERROR), 0, "Stream creation must be called from a merge thread"), true));
+  }
 
   // Select stream provider using base ServiceProxy functionality
   auto stream_provider = ServiceProxy::SelectStreamProvider(ctx, nullptr);
