@@ -1,0 +1,31 @@
+global:
+  threadmodel:
+    fiber:
+      - instance_name: fiber_instance
+        concurrency_hint: 8
+
+server:
+  app: sse_ai
+  server: sse_ai_server
+  admin_port: 21115
+  admin_ip: 0.0.0.0
+  service:
+    - name: sse_ai_service
+      protocol: http
+      network: tcp
+      ip: 0.0.0.0
+      port: 24857
+      accept_thread_num: 1
+      threadmodel:
+        - instance_name: fiber_instance
+
+plugins:
+  log:
+    default:
+      - name: default
+        min_level: 6  # CRITICAL level only to reduce server logging
+        format: "%v"  # Minimal format
+        sinks:
+          local_file:
+            filename: ./sse_ai_server.log
+            min_level: 4  # Keep some server logs in file for debugging
