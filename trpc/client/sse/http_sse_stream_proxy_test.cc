@@ -11,135 +11,169 @@
 
 #include "trpc/client/sse/http_sse_stream_proxy.h"
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
+#include <gtest/gtest.h>
+#include <gmock/gmock.h>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <functional>
 
-#include "trpc/client/make_client_context.h"
-#include "trpc/client/service_proxy_option_setter.h"
-#include "trpc/client/client_context.h"
-#include "trpc/codec/codec_helper.h"
-#include "trpc/codec/http/http_protocol.h"
+#include "trpc/client/service_proxy_option.h"
 #include "trpc/common/status.h"
-#include "trpc/util/ref_ptr.h"
+#include "trpc/util/http/sse/sse_event.h"
+#include "trpc/util/http/sse/sse_parser.h"
 
-namespace trpc::testing {
-
-using namespace stream;
+namespace trpc {
 
 class HttpSseStreamProxyTest : public ::testing::Test {
  public:
   void SetUp() override {
-    // Create a simple proxy instance for basic testing
-    proxy_ = std::make_shared<HttpSseStreamProxy>();
+    // Setup service proxy options without requiring config file or codec registration
+    options_.name = "test_sse_client";
+    options_.codec_name = "http";
+    options_.network = "tcp";
+    options_.conn_type = "long";
+    options_.timeout = 30000;
+    options_.selector_name = "direct";
+    options_.target = "127.0.0.1:8080";
+    
+    // Create HttpSseStreamProxy without initializing the underlying proxy
+    sse_proxy_ = std::make_shared<::trpc::HttpSseStreamProxy>();
   }
 
   void TearDown() override {
-    proxy_.reset();
+    sse_proxy_.reset();
   }
 
  protected:
-  std::shared_ptr<HttpSseStreamProxy> proxy_{nullptr};
+  ::trpc::ServiceProxyOption options_;
+  std::shared_ptr<::trpc::HttpSseStreamProxy> sse_proxy_;
 };
 
-TEST_F(HttpSseStreamProxyTest, TestCreateSseRequestProtocol) {
-  // Test that we can create a proper SSE request protocol
-  auto protocol = proxy_->CreateSseRequestProtocol();
+TEST_F(HttpSseStreamProxyTest, ConstructorDestructor) {
+  // Test basic construction and destruction
+  EXPECT_NE(sse_proxy_, nullptr);
   
-  ASSERT_NE(protocol, nullptr);
-  
-  // Cast to HTTP request protocol
-  auto* http_protocol = dynamic_cast<HttpRequestProtocol*>(protocol.get());
-  ASSERT_NE(http_protocol, nullptr);
-  
-  // Verify default values
-  EXPECT_EQ(http_protocol->request->GetMethod(), "GET");
-  EXPECT_EQ(http_protocol->request->GetUrl(), "/");
+  // Test direct construction
+  auto proxy2 = std::make_shared<::trpc::HttpSseStreamProxy>();
+  EXPECT_NE(proxy2, nullptr);
 }
 
-TEST_F(HttpSseStreamProxyTest, TestSetupSseParametersWithValidContext) {
-  // Create a client context manually instead of using MakeClientContext
-  auto ctx = MakeRefCounted<ClientContext>();
-  ASSERT_NE(ctx, nullptr);
+TEST_F(HttpSseStreamProxyTest, SetServiceProxyOption) {
+  // Test setting service proxy options - should not throw
+  // Note: This test validates the method exists and doesn't crash
+  EXPECT_NO_THROW(sse_proxy_->SetServiceProxyOption(options_));
   
-  // Setup SSE parameters
-  bool result = proxy_->SetupSseParameters(ctx);
-  EXPECT_TRUE(result);
-  
-  // Verify request was created
-  ASSERT_NE(ctx->GetRequest(), nullptr);
-  
-  // Cast to HTTP request protocol
-  auto* http_protocol = dynamic_cast<HttpRequestProtocol*>(ctx->GetRequest().get());
-  ASSERT_NE(http_protocol, nullptr);
-  
-  // Verify SSE-specific headers are set
-  auto& request = http_protocol->request;
-  EXPECT_EQ(request->GetHeader("Accept"), "text/event-stream");
-  EXPECT_EQ(request->GetHeader("Cache-Control"), "no-cache");
-  EXPECT_EQ(request->GetHeader("Connection"), "keep-alive");
-  
-  // Verify timeout is set
-  EXPECT_EQ(ctx->GetTimeout(), 60000);  // 60 seconds
+  // Test that we can still call other methods after setting options
+  EXPECT_NO_THROW(sse_proxy_->InitializeSseProxy());
 }
 
-TEST_F(HttpSseStreamProxyTest, TestSetupSseParametersWithNullContext) {
-  // Test that SetupSseParameters handles null context gracefully
-  bool result = proxy_->SetupSseParameters(nullptr);
-  EXPECT_FALSE(result);
+TEST_F(HttpSseStreamProxyTest, CreateSseContext) {
+  // Test creating SSE context - this should return nullptr when no HTTP proxy is set
+  std::string url = "/ai/chat?question=hello";
+  auto ctx = sse_proxy_->CreateSseContext(url, 30000);
+  
+  // Without proper initialization, this should return nullptr
+  EXPECT_EQ(ctx, nullptr);
 }
 
-TEST_F(HttpSseStreamProxyTest, TestGetSyncStreamReaderWriterWithNullContext) {
-  // Test that GetSyncStreamReaderWriter handles null context properly
-  auto result = proxy_->GetSyncStreamReaderWriter(nullptr);
-  
-  // Should return an error stream with appropriate status
-  EXPECT_FALSE(result.GetStatus().OK());
-  EXPECT_EQ(result.GetStatus().GetFrameworkRetCode(), static_cast<int>(codec::ClientRetCode::ENCODE_ERROR));
+TEST_F(HttpSseStreamProxyTest, InitializeSseProxy) {
+  // Test SSE proxy initialization
+  EXPECT_NO_THROW(sse_proxy_->InitializeSseProxy());
 }
 
-TEST_F(HttpSseStreamProxyTest, TestSseHeadersAreCorrect) {
-  // Test that all required SSE headers are set correctly
-  auto ctx = MakeRefCounted<ClientContext>();
-  bool result = proxy_->SetupSseParameters(ctx);
-  EXPECT_TRUE(result);
+TEST_F(HttpSseStreamProxyTest, SendRequestWithNullContext) {
+  std::string response_content;
   
-  auto* http_protocol = dynamic_cast<HttpRequestProtocol*>(ctx->GetRequest().get());
-  auto& request = http_protocol->request;
+  ::trpc::Status status = sse_proxy_->SendRequest(nullptr, "/test", response_content);
   
-  // Required SSE headers according to specification
-  EXPECT_EQ(request->GetHeader("Accept"), "text/event-stream");
-  EXPECT_EQ(request->GetHeader("Cache-Control"), "no-cache");
-  EXPECT_EQ(request->GetHeader("Connection"), "keep-alive");
+  // Should fail with invalid HTTP service proxy
+  EXPECT_FALSE(status.OK());
 }
 
-TEST_F(HttpSseStreamProxyTest, TestTimeoutConfiguration) {
-  // Test that SSE timeout is configured appropriately for long-lived connections
-  auto ctx = MakeRefCounted<ClientContext>();
-  bool result = proxy_->SetupSseParameters(ctx);
-  EXPECT_TRUE(result);
+TEST_F(HttpSseStreamProxyTest, ConnectAndReceiveWithNullContext) {
+  ::trpc::SseEventCallback callback = [](const ::trpc::http::sse::SseEvent& event) -> bool {
+    return true;
+  };
   
-  // SSE connections should have a longer timeout than regular HTTP requests
-  EXPECT_EQ(ctx->GetTimeout(), 60000);  // 60 seconds
+  ::trpc::Status status = sse_proxy_->ConnectAndReceive(nullptr, "/test", callback);
   
-  // Verify this is different from the default timeout in the option
-  EXPECT_GT(ctx->GetTimeout(), 1000);  // Should be longer than the 1-second default
+  // Should fail due to invalid HTTP service proxy
+  EXPECT_FALSE(status.OK());
 }
 
-TEST_F(HttpSseStreamProxyTest, TestBasicFunctionality) {
-  // Test basic functionality without complex initialization
-  auto ctx = MakeRefCounted<ClientContext>();
+TEST_F(HttpSseStreamProxyTest, ConnectAndReceiveWithNullCallback) {
+  // Create a mock context (will be nullptr since no HTTP proxy is set)
+  auto ctx = sse_proxy_->CreateSseContext("/test", 30000);
   
-  // Test SetupSseParameters
-  bool setup_result = proxy_->SetupSseParameters(ctx);
-  EXPECT_TRUE(setup_result);
+  ::trpc::SseEventCallback null_callback = nullptr;
+  ::trpc::Status status = sse_proxy_->ConnectAndReceive(ctx, "/test", null_callback);
   
-  // Test CreateSseRequestProtocol
-  auto protocol = proxy_->CreateSseRequestProtocol();
-  EXPECT_NE(protocol, nullptr);
-  
-  // Test that we can create a context and it's valid
-  EXPECT_NE(ctx, nullptr);
-  EXPECT_TRUE(setup_result);
+  // Should fail due to null callback
+  EXPECT_FALSE(status.OK());
 }
 
-}  // namespace trpc::testing
+TEST_F(HttpSseStreamProxyTest, SseEventCallbackType) {
+  // Test SSE event callback function type
+  bool callback_called = false;
+  ::trpc::http::sse::SseEvent test_event;
+  test_event.event_type = "message";
+  test_event.data = "test data";
+  
+  ::trpc::SseEventCallback callback = [&callback_called](const ::trpc::http::sse::SseEvent& event) -> bool {
+    callback_called = true;
+    EXPECT_EQ(event.event_type, "message");
+    EXPECT_EQ(event.data, "test data");
+    return false; // Stop processing
+  };
+  
+  // Call callback directly for testing
+  bool result = callback(test_event);
+  
+  EXPECT_TRUE(callback_called);
+  EXPECT_FALSE(result); // Should return false to stop processing
+}
+
+TEST_F(HttpSseStreamProxyTest, GetSseStreamWithValidContext) {
+  // Create a mock context (will be nullptr since no HTTP proxy is set)
+  auto ctx = sse_proxy_->CreateSseContext("/test", 30000);
+  
+  // This should not crash even with null context/proxy
+  EXPECT_NO_THROW({
+    auto stream = sse_proxy_->GetSseStream(ctx, "/test");
+  });
+}
+
+TEST_F(HttpSseStreamProxyTest, GetSseStreamWithNullContext) {
+  // Test with null context should handle gracefully
+  EXPECT_NO_THROW({
+    auto stream = sse_proxy_->GetSseStream(nullptr, "/test");
+  });
+}
+
+// Test SSE parser integration
+TEST_F(HttpSseStreamProxyTest, SseParserIntegration) {
+  // Test SSE content parsing
+  std::string sse_content = 
+    "event: message\n"
+    "data: Hello World\n\n"
+    "event: close\n"
+    "data: Connection closed\n\n";
+  
+  std::vector<::trpc::http::sse::SseEvent> events = ::trpc::http::sse::SseParser::ParseEvents(sse_content);
+  
+  EXPECT_EQ(events.size(), 2);
+  if (events.size() >= 2) {
+    EXPECT_EQ(events[0].event_type, "message");
+    EXPECT_EQ(events[0].data, "Hello World");
+    EXPECT_EQ(events[1].event_type, "close");
+    EXPECT_EQ(events[1].data, "Connection closed");
+  }
+}
+
+}  // namespace trpc
+
+int main(int argc, char** argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

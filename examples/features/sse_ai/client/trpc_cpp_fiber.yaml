@@ -1,0 +1,34 @@
+global:
+  threadmodel:
+    fiber:
+      - instance_name: fiber_instance
+        concurrency_hint: 8
+
+client:
+  service:
+    - name: sse_ai_client
+      protocol: http
+      network: tcp
+      conn_type: long
+      timeout: 30000
+      target: 127.0.0.1:24857
+      selector_name: direct
+    - name: sse_ai_client_sse
+      protocol: http_sse
+      network: tcp
+      conn_type: long
+      timeout: 30000
+      target: 127.0.0.1:24857
+      selector_name: direct
+
+plugins:
+  log:
+    default:
+      - name: default
+        min_level: 2
+        format: "[%Y-%m-%d %H:%M:%S.%e] [thread %t] [%l] [%@] %v"
+        sinks:
+          local_file:
+            filename: ./sse_ai_client.log
+          stdout:
+            eol_style: native
