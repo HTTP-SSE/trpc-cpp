@@ -39,13 +39,19 @@ struct SseEvent {
 
 #### Field Descriptions
 
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `event_type` | `std::string` | Event type identifier | `"message"`, `"update"`, `"notification"` |
-| `data` | `std::string` | Event payload data | `"Hello World"`, `"User logged in"` |
-| `id` | `std::optional<std::string>` | Event ID for reconnection | `"123"`, `"event_456"` |
-| `retry` | `std::optional<uint32_t>` | Reconnection timeout in milliseconds | `5000`, `10000` |
+| Field        | Type                         | Description                          | Example                                   |
+| ------------ | ---------------------------- | ------------------------------------ | ----------------------------------------- |
+| `event_type` | `std::string`                | Event type identifier                | `"message"`, `"update"`, `"notification"` |
+| `data`       | `std::string`                | Event payload data                   | `"Hello World"`, `"User logged in"`       |
+| `id`         | `std::optional<std::string>` | Event ID for reconnection            | `"123"`, `"event_456"`                    |
+| `retry`      | `std::optional<uint32_t>`    | Reconnection timeout in milliseconds | `5000`, `10000`                           |
 
+
+**SseStruct Features:**
+- Every field line must end with `\n`
+- `\n\n` marks the end of a message
+- Each line of data must start with a field name such as "data:" or "event:", followed by a space after the colon.
+- The default event type is "message".
 #### Serialization
 
 The `ToString()` method serializes the event to standard SSE text format:
@@ -135,11 +141,11 @@ class SseParser {
 
 #### Public Methods
 
-| Method | Parameters | Return | Description |
-|--------|------------|--------|-------------|
-| `ParseEvent` | `const std::string& text` | `SseEvent` | Parse single SSE event from text |
-| `ParseEvents` | `const std::string& text` | `std::vector<SseEvent>` | Parse multiple SSE events from text |
-| `IsValidSseMessage` | `const std::string& text` | `bool` | Validate SSE message format |
+| Method              | Parameters                | Return                  | Description                         |
+| ------------------- | ------------------------- | ----------------------- | ----------------------------------- |
+| `ParseEvent`        | `const std::string& text` | `SseEvent`              | Parse single SSE event from text    |
+| `ParseEvents`       | `const std::string& text` | `std::vector<SseEvent>` | Parse multiple SSE events from text |
+| `IsValidSseMessage` | `const std::string& text` | `bool`                  | Validate SSE message format         |
 
 #### Usage Examples
 
