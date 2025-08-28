@@ -1,286 +1,209 @@
 # HTTP SSE Codec Test Suite
 
-This directory contains comprehensive tests for the HTTP Server-Sent Events (SSE) codec implementation in tRPC-Cpp.
+This directory contains comprehensive tests for the HTTP SSE codec implementation.
 
-## Overview
+## Test Files
 
-The test suite validates the HTTP SSE codec functionality, which includes:
-- **HttpSseRequestProtocol**: SSE-specific request protocol handling
-- **HttpSseResponseProtocol**: SSE-specific response protocol handling
-- **HttpSseClientCodec**: Client-side SSE codec operations
-- **HttpSseServerCodec**: Server-side SSE codec operations
-- **Header Management**: SSE-specific HTTP header handling
-- **Event Parsing**: SSE event parsing and serialization
+### 1. `http_sse_codec_test.cc`
+Main test file covering the core HTTP SSE codec functionality.
 
-## Test Cases
+**Test Categories:**
+- **Protocol Classes**: Tests for `HttpSseRequestProtocol` and `HttpSseResponseProtocol`
+- **Client Codec**: Tests for `HttpSseClientCodec` functionality
+- **Server Codec**: Tests for `HttpSseServerCodec` functionality
+- **Integration Tests**: End-to-end client-server integration tests
+- **Edge Cases**: Tests for edge cases and error handling
 
-### 1. HttpSseRequestProtocol Tests
+### 2. `http_sse_proto_checker_test.cc`
+Test file specifically for the SSE protocol checker functionality.
 
-#### `HttpSseRequestProtocol_GetSseEvent`
-- **Purpose**: Tests parsing SSE events from request bodies
-- **Input**: Empty request, then request with valid SSE data
-- **Expected**: Returns `std::nullopt` for empty request, parsed event for valid data
+**Test Categories:**
+- **Request Validation**: Tests for `IsValidSseRequest` function
+- **Response Validation**: Tests for `IsValidSseResponse` function
+- **Protocol Checking**: Tests for `HttpSseZeroCopyCheckRequest` and `HttpSseZeroCopyCheckResponse`
+- **Edge Cases**: Tests for various edge cases in protocol validation
 
-#### `HttpSseRequestProtocol_SetSseEvent`
-- **Purpose**: Tests setting SSE events in request bodies
-- **Input**: SseEvent with all fields (event_type, data, id, retry)
-- **Expected**: Request contains serialized SSE data and proper content type
+## Running Tests
 
-### 2. HttpSseResponseProtocol Tests
-
-#### `HttpSseResponseProtocol_GetSseEvent`
-- **Purpose**: Tests parsing SSE events from response bodies
-- **Input**: Empty response, then response with valid SSE data
-- **Expected**: Returns `std::nullopt` for empty response, parsed event for valid data
-
-#### `HttpSseResponseProtocol_SetSseEvent`
-- **Purpose**: Tests setting single SSE event in response body
-- **Input**: SseEvent with event_type and data
-- **Expected**: Response contains serialized SSE data and proper content type
-
-#### `HttpSseResponseProtocol_SetSseEvents`
-- **Purpose**: Tests setting multiple SSE events in response body
-- **Input**: Vector of 3 SseEvent objects with different types
-- **Expected**: Response contains concatenated SSE data with all events
-
-### 3. HttpSseClientCodec Tests
-
-#### `HttpSseClientCodec_CreateRequestPtr`
-- **Purpose**: Tests creation of SSE request protocol objects
-- **Input**: None
-- **Expected**: Returns valid HttpSseRequestProtocol pointer
-
-#### `HttpSseClientCodec_CreateResponsePtr`
-- **Purpose**: Tests creation of SSE response protocol objects
-- **Input**: None
-- **Expected**: Returns valid HttpSseResponseProtocol pointer
-
-#### `HttpSseClientCodec_FillRequest`
-- **Purpose**: Tests filling SSE request with event data
-- **Input**: SseEvent with event_type, data, and id
-- **Expected**: Request contains SSE data and proper headers (Accept, Cache-Control, Connection)
-
-#### `HttpSseClientCodec_FillResponse`
-- **Purpose**: Tests extracting SSE events from response
-- **Input**: Response protocol with SSE data
-- **Expected**: Successfully extracts SseEvent with correct field values
-
-### 4. HttpSseServerCodec Tests
-
-#### `HttpSseServerCodec_CreateRequestObject`
-- **Purpose**: Tests creation of SSE request protocol objects
-- **Input**: None
-- **Expected**: Returns valid HttpSseRequestProtocol pointer
-
-#### `HttpSseServerCodec_CreateResponseObject`
-- **Purpose**: Tests creation of SSE response protocol objects
-- **Input**: None
-- **Expected**: Returns valid HttpSseResponseProtocol pointer
-
-#### `HttpSseServerCodec_IsValidSseRequest`
-- **Purpose**: Tests SSE request validation logic
-- **Input**: Valid SSE request (GET method, Accept: text/event-stream), invalid requests
-- **Expected**: Returns true for valid requests, false for invalid ones
-
-### 5. Codec Names Tests
-
-#### `CodecNames`
-- **Purpose**: Tests codec name consistency
-- **Input**: HttpSseClientCodec and HttpSseServerCodec instances
-- **Expected**: Both codecs return "http_sse" as their name
-
-## Running the Tests
-
-### Prerequisites
-- Bazel build system
-- Google Test framework (automatically managed by Bazel)
-- tRPC-Cpp framework dependencies
-
-### Commands
-
-#### Build the test target
+### Quick Start
 ```bash
+# From the trpc-cpp root directory
+./trpc/codec/http_sse/test/run_tests.sh
+```
+
+### Manual Testing
+```bash
+# Build tests
 bazel build //trpc/codec/http_sse:http_sse_codec_test
-```
+bazel build //trpc/codec/http_sse:http_sse_proto_checker_test
 
-#### Run tests with minimal output
-```bash
-bazel test //trpc/codec/http_sse:http_sse_codec_test
-```
-
-#### Run tests with detailed output
-```bash
+# Run main codec tests
 bazel test //trpc/codec/http_sse:http_sse_codec_test --test_output=all
+
+# Run protocol checker tests
+bazel test //trpc/codec/http_sse:http_sse_proto_checker_test --test_output=all
 ```
 
-#### Run tests with verbose output
+### Individual Test Execution
 ```bash
-bazel test //trpc/codec/http_sse:http_sse_codec_test --test_output=all --verbose_failures
-```
-
-#### Run specific test (if needed)
-```bash
+# Run specific test
 bazel test //trpc/codec/http_sse:http_sse_codec_test --test_filter=HttpSseCodecTest.HttpSseRequestProtocol_GetSseEvent
+
+# Run tests matching a pattern
+bazel test //trpc/codec/http_sse:http_sse_codec_test --test_filter=*FillRequest*
 ```
-
-#### Run tests with debug symbols
-```bash
-bazel test -c dbg //trpc/codec/http_sse:http_sse_codec_test --test_output=all
-```
-
-#### Run tests with optimizations
-```bash
-bazel test -c opt //trpc/codec/http_sse:http_sse_codec_test --test_output=all
-```
-
-## Expected Output
-
-When running with `--test_output=all`, you should see:
-
-```
-Running main() from gmock_main.cc
-[==========] Running 12 tests from 1 test suite.
-[----------] Global test environment set-up.
-[----------] 12 tests from HttpSseCodecTest
-[ RUN      ] HttpSseCodecTest.HttpSseRequestProtocol_GetSseEvent
-[       OK ] HttpSseCodecTest.HttpSseRequestProtocol_GetSseEvent (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseRequestProtocol_SetSseEvent
-[       OK ] HttpSseCodecTest.HttpSseRequestProtocol_SetSseEvent (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseResponseProtocol_GetSseEvent
-[       OK ] HttpSseCodecTest.HttpSseResponseProtocol_GetSseEvent (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseResponseProtocol_SetSseEvent
-[       OK ] HttpSseCodecTest.HttpSseResponseProtocol_SetSseEvent (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseResponseProtocol_SetSseEvents
-[       OK ] HttpSseCodecTest.HttpSseResponseProtocol_SetSseEvents (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseClientCodec_CreateRequestPtr
-[       OK ] HttpSseCodecTest.HttpSseClientCodec_CreateRequestPtr (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseClientCodec_CreateResponsePtr
-[       OK ] HttpSseCodecTest.HttpSseClientCodec_CreateResponsePtr (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseClientCodec_FillRequest
-[       OK ] HttpSseCodecTest.HttpSseClientCodec_FillRequest (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseClientCodec_FillResponse
-[       OK ] HttpSseCodecTest.HttpSseClientCodec_FillResponse (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseServerCodec_CreateRequestObject
-[       OK ] HttpSseCodecTest.HttpSseServerCodec_CreateRequestObject (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseServerCodec_CreateResponseObject
-[       OK ] HttpSseCodecTest.HttpSseServerCodec_CreateResponseObject (0 ms)
-[ RUN      ] HttpSseCodecTest.HttpSseServerCodec_IsValidSseRequest
-[       OK ] HttpSseCodecTest.HttpSseServerCodec_IsValidSseRequest (0 ms)
-[ RUN      ] HttpSseCodecTest.CodecNames
-[       OK ] HttpSseCodecTest.CodecNames (0 ms)
-[----------] 12 tests from HttpSseCodecTest (0 ms total)
-
-[----------] Global test environment tear-down
-[==========] 12 tests from 1 test suite ran. (0 ms total)
-[  PASSED  ] 12 tests.
-```
-
-**Note**: All tests should pass successfully after the recent compilation fixes.
-
-## Recent Fixes and Improvements
-
-### Compilation Issues Resolved
-- **Constructor Simplification**: Simplified SseEvent to use a single constructor, eliminating ambiguity
-- **Test Fixture Names**: Corrected test fixture names from `HttpSseClientCodecTest` to `HttpSseCodecTest`
-- **Method Visibility**: Made `IsValidSseRequest` method public for testing access
-- **Header Method Calls**: Fixed HTTP header setting methods to use correct API calls
-
-### Code Quality Improvements
-- **Type Safety**: Enhanced type safety with explicit casting
-- **Test Coverage**: Comprehensive coverage of all codec functionality
-- **Error Handling**: Proper error handling and validation in tests
-- **Documentation**: Updated documentation to reflect current implementation
 
 ## Test Coverage
 
-The test suite provides comprehensive coverage for:
+### Protocol Classes Tests
+- ✅ **HttpSseRequestProtocol_GetSseEvent**: Tests parsing SSE events from requests
+- ✅ **HttpSseRequestProtocol_SetSseEvent**: Tests setting SSE events in requests
+- ✅ **HttpSseRequestProtocol_InvalidSseData**: Tests handling of invalid SSE data
+- ✅ **HttpSseResponseProtocol_GetSseEvent**: Tests parsing SSE events from responses
+- ✅ **HttpSseResponseProtocol_SetSseEvent**: Tests setting SSE events in responses
+- ✅ **HttpSseResponseProtocol_SetSseEvents**: Tests setting multiple SSE events
+- ✅ **HttpSseResponseProtocol_EmptyEvents**: Tests handling empty event lists
 
-- ✅ **Protocol Classes**: Request/response protocol functionality
-- ✅ **Codec Operations**: Encoding/decoding operations
-- ✅ **Header Management**: SSE-specific header handling
-- ✅ **Event Parsing**: SSE event parsing and serialization
-- ✅ **Request Validation**: SSE request validation logic
-- ✅ **Object Creation**: Protocol object instantiation
-- ✅ **Error Handling**: Graceful handling of invalid data
+### Client Codec Tests
+- ✅ **HttpSseClientCodec_CreateRequestPtr**: Tests request protocol creation
+- ✅ **HttpSseClientCodec_CreateResponsePtr**: Tests response protocol creation
+- ✅ **HttpSseClientCodec_FillRequest**: Tests filling requests with SSE events
+- ✅ **HttpSseClientCodec_FillRequest_NullBody**: Tests handling null body
+- ✅ **HttpSseClientCodec_FillResponse**: Tests filling responses with SSE events
+- ✅ **HttpSseClientCodec_FillResponse_MultipleEvents**: Tests multiple event handling
+- ✅ **HttpSseClientCodec_FillResponse_EmptyContent**: Tests empty content handling
+- ✅ **HttpSseClientCodec_ZeroCopyEncode**: Tests request encoding
 
-## Test Data Examples
+### Server Codec Tests
+- ✅ **HttpSseServerCodec_CreateRequestObject**: Tests request object creation
+- ✅ **HttpSseServerCodec_CreateResponseObject**: Tests response object creation
+- ✅ **HttpSseServerCodec_IsValidSseRequest**: Tests SSE request validation
+- ✅ **HttpSseServerCodec_ZeroCopyEncode**: Tests response encoding
+- ✅ **HttpSseServerCodec_ZeroCopyDecode**: Tests request decoding
 
-### Valid SSE Event
+### Protocol Checker Tests
+- ✅ **IsValidSseRequest_Function**: Tests request validation function
+- ✅ **IsValidSseResponse_Function**: Tests response validation function
+- ✅ **HttpSseZeroCopyCheckRequest**: Tests request protocol checking
+- ✅ **HttpSseZeroCopyCheckResponse**: Tests response protocol checking
+
+### Integration Tests
+- ✅ **ClientServerIntegration**: End-to-end client-server integration test
+
+### Edge Cases and Error Handling
+- ✅ **EdgeCase_EmptyEvent**: Tests handling empty events
+- ✅ **EdgeCase_LargeEvent**: Tests handling large events (10KB)
+- ✅ **EdgeCase_SpecialCharacters**: Tests handling special characters in events
+
+## Test Data
+
+### Valid SSE Events
 ```cpp
-http::sse::SseEvent event("message", "Hello World", "123", 5000);
-// event_type: "message"
-// data: "Hello World"
-// id: "123"
-// retry: 5000
+http::sse::SseEvent event;
+event.event_type = "message";
+event.data = "Hello World";
+event.id = "123";
+event.retry = 5000;
 ```
 
-### Valid SSE Request Headers
-```
+### Valid HTTP SSE Request
+```http
+GET /events HTTP/1.1
+Host: example.com
 Accept: text/event-stream
 Cache-Control: no-cache
 Connection: keep-alive
 ```
 
-### Valid SSE Response Headers
-```
+### Valid HTTP SSE Response
+```http
+HTTP/1.1 200 OK
 Content-Type: text/event-stream
 Cache-Control: no-cache
 Connection: keep-alive
-Access-Control-Allow-Origin: *
-Access-Control-Allow-Headers: Cache-Control
+
+data: Hello World
 ```
 
-## Dependencies
+## Test Assertions
 
-The test suite depends on:
-- `//trpc/codec/http_sse:http_sse_codec` - The SSE codec being tested
-- `//trpc/codec/http:http_protocol` - HTTP protocol definitions
-- `//trpc/client:client_context` - Client context types
-- `//trpc/server:server_context` - Server context types
-- `//trpc/util/http/sse:http_sse` - SSE utilities
-- `@com_google_googletest//:gtest` - Google Test framework
-- `@com_google_googletest//:gtest_main` - Google Test main function
+The tests use Google Test framework with the following common assertions:
 
-### Build Dependencies
-- **C++17**: Required for `std::optional` and other modern C++ features
-- **Bazel**: Build system for dependency management
-- **Google Test**: Testing framework for C++
+- `EXPECT_TRUE()` / `EXPECT_FALSE()`: Boolean assertions
+- `EXPECT_EQ()`: Equality assertions
+- `EXPECT_GT()`: Greater than assertions
+- `EXPECT_FALSE()`: False assertions
+- `EXPECT_TRUE()`: True assertions
+
+## Debugging Tests
+
+### Verbose Output
+```bash
+bazel test //trpc/codec/http_sse:http_sse_codec_test --test_output=all --verbose_failures
+```
+
+### Debug Build
+```bash
+bazel test //trpc/codec/http_sse:http_sse_codec_test -c dbg --test_output=all
+```
+
+### Single Test Debug
+```bash
+bazel test //trpc/codec/http_sse:http_sse_codec_test --test_filter=TestName --test_output=all --verbose_failures
+```
+
+## Test Dependencies
+
+The tests depend on:
+- `gtest`: Google Test framework
+- `trpc/codec/http_sse:http_sse_codec`: Main SSE codec library
+- `trpc/util/http/sse:sse_parser`: SSE parsing utilities
+- `trpc/util/http/sse:sse_event`: SSE event structures
+- `trpc/util/buffer:noncontiguous_buffer`: Buffer utilities
+- `trpc/runtime/iomodel/reactor/common:connection`: Connection utilities
+
+## Adding New Tests
+
+When adding new tests:
+
+1. **Follow Naming Convention**: Use descriptive test names like `TestCategory_TestScenario`
+2. **Test Both Success and Failure Cases**: Always test both valid and invalid inputs
+3. **Include Edge Cases**: Test boundary conditions and edge cases
+4. **Add Documentation**: Update this README with new test descriptions
+5. **Update BUILD File**: Add new test files to the BUILD configuration
+
+## Continuous Integration
+
+These tests are designed to run in CI/CD pipelines:
+
+```yaml
+# Example CI configuration
+- name: Build and Test HTTP SSE Codec
+  run: |
+    bazel build //trpc/codec/http_sse:all
+    bazel test //trpc/codec/http_sse:all
+```
+
+## Performance Considerations
+
+- Tests are designed to be fast and lightweight
+- Large data tests use reasonable sizes (10KB max)
+- Integration tests avoid network dependencies
+- Mock objects are used where appropriate
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Build Failures**: Ensure all dependencies are properly installed
-2. **Test Failures**: Check that SSE utilities are working correctly
-3. **Header Issues**: Verify HTTP header handling is consistent
-4. **Constructor Usage**: SseEvent uses a single constructor with optional parameters
-5. **Private Method Access**: Ensure test methods are accessible (IsValidSseRequest is now public)
+1. **Build Failures**: Check that all dependencies are properly configured in BUILD files
+2. **Test Failures**: Run with `--test_output=all` for detailed error messages
+3. **Linker Errors**: Ensure all required libraries are included in dependencies
+4. **Runtime Errors**: Check that mock objects are properly initialized
 
-### Debug Commands
+### Getting Help
 
-```bash
-# Build with debug information
-bazel build -c dbg //trpc/codec/http_sse:http_sse_codec_test
-
-# Run with verbose output
-bazel test //trpc/codec/http_sse:http_sse_codec_test --test_output=all --verbose_failures
-
-# Run specific failing test
-bazel test //trpc/codec/http_sse:http_sse_codec_test --test_filter=HttpSseCodecTest.HttpSseRequestProtocol_GetSseEvent --test_output=all
-```
-
-## Notes
-
-- All tests use the `HttpSseCodecTest` test fixture
-- Tests are designed to be independent and can run in any order
-- SSE format follows the [W3C Server-Sent Events specification](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
-- Tests validate both client-side and server-side SSE codec functionality
-- **Constructor Design**: SseEvent uses a single constructor with optional parameters for simplicity
-- **Method Visibility**: `IsValidSseRequest` method is public for testing purposes
-- **Header Management**: Tests verify proper SSE-specific HTTP headers are set
-
-## Related Documentation
-
-- [HTTP SSE Codec README](../README.md) - Main codec documentation
-- [SSE Utilities README](../../util/http/sse/README.md) - Core SSE utilities
-- [tRPC-Cpp Framework](https://github.com/trpc-group/trpc-cpp) - Main framework documentation
+If you encounter issues:
+1. Check the test output for specific error messages
+2. Verify that all dependencies are correctly specified
+3. Ensure you're running from the correct directory
+4. Check that the codec implementation matches the test expectations

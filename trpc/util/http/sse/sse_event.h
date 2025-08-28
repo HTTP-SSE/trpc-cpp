@@ -37,16 +37,29 @@ struct SseEvent {
     }
 
     if (!data.empty()) {
-      // Handle multi-line data - split on literal "\n" sequences
+      // Handle multi-line data - split on both literal "\n" sequences and actual newlines
       size_t pos = 0;
       size_t prev_pos = 0;
+      
+      // First, handle literal "\n" sequences
       while ((pos = data.find("\\n", prev_pos)) != std::string::npos) {
         result += "data: " + data.substr(prev_pos, pos - prev_pos) + "\n";
         prev_pos = pos + 2; // Skip over "\n"
       }
-      // Add the last part (or the whole string if no "\n" found)
-      if (prev_pos < data.length()) {
-        result += "data: " + data.substr(prev_pos) + "\n";
+      
+      // Then handle any remaining actual newline characters
+      std::string remaining = data.substr(prev_pos);
+      if (!remaining.empty()) {
+        size_t nl_pos = 0;
+        size_t nl_prev_pos = 0;
+        while ((nl_pos = remaining.find('\n', nl_prev_pos)) != std::string::npos) {
+          result += "data: " + remaining.substr(nl_prev_pos, nl_pos - nl_prev_pos) + "\n";
+          nl_prev_pos = nl_pos + 1; // Skip over the newline
+        }
+        // Add the last part
+        if (nl_prev_pos < remaining.length()) {
+          result += "data: " + remaining.substr(nl_prev_pos) + "\n";
+        }
       }
     }
 

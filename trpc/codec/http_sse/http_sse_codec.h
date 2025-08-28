@@ -66,6 +66,14 @@ class HttpSseClientCodec : public HttpClientCodec {
   /// @brief Returns name of HTTP SSE codec.
   std::string Name() const override { return kHttpSseCodecName; }
 
+  /// @brief Decodes a complete protocol message from binary byte stream (zero-copy).
+  ///
+  /// @param conn is the connection object where the protocol integrity check is performed on the current binary bytes.
+  /// @param in is a buffer contains input binary bytes read from the socket.
+  /// @param out is a list of successfully decoded HTTP SSE response protocol message.
+  /// @return Returns a number greater than or equal to 0 on success, less than 0 on failure.
+  int ZeroCopyCheck(const ConnectionPtr& conn, NoncontiguousBuffer& in, std::deque<std::any>& out) override;
+
   /// @brief Decodes a protocol message object from a complete protocol message decoded from binary bytes (zero copy).
   ///
   /// @param ctx is client context for decoding.

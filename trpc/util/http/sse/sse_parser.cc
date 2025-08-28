@@ -152,10 +152,7 @@ std::vector<std::string> SseParser::SplitLines(const std::string& text) {
   std::string line;
   
   while (std::getline(iss, line)) {
-    // Remove carriage return if present
-    if (!line.empty() && line.back() == '\r') {
-      line.pop_back();
-    }
+    // Don't remove carriage return - preserve original line endings
     lines.push_back(line);
   }
   

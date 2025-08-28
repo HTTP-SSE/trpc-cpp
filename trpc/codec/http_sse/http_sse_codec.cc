@@ -15,6 +15,7 @@
 #include "trpc/codec/http_sse/http_sse_codec.h"
 
 #include "trpc/codec/http/http_protocol.h"
+#include "trpc/codec/http_sse/http_sse_proto_checker.h"
 #include "trpc/common/status.h"
 #include "trpc/log/trpc_log.h"
 #include "trpc/util/http/sse/sse_parser.h"
@@ -82,6 +83,10 @@ void HttpSseResponseProtocol::SetSseEvents(const std::vector<http::sse::SseEvent
 }
 
 // HttpSseClientCodec implementation
+int HttpSseClientCodec::ZeroCopyCheck(const ConnectionPtr& conn, NoncontiguousBuffer& in, std::deque<std::any>& out) {
+  return HttpSseZeroCopyCheckResponse(conn, in, out);
+}
+
 bool HttpSseClientCodec::ZeroCopyDecode(const ClientContextPtr& ctx, std::any&& in, ProtocolPtr& out) {
   // First, use the parent HTTP codec to decode the basic HTTP response
   if (!HttpClientCodec::ZeroCopyDecode(ctx, std::move(in), out)) {
@@ -140,6 +145,11 @@ bool HttpSseClientCodec::FillRequest(const ClientContextPtr& ctx, const Protocol
     SetSseRequestHeaders(sse_protocol->request.get());
   }
 
+  // Set default HTTP method for SSE requests
+  if (sse_protocol->request && sse_protocol->request->GetMethod().empty()) {
+    sse_protocol->request->SetMethodType(http::OperationType::GET);
+  }
+
   return true;
 }
 
@@ -155,6 +165,33 @@ bool HttpSseClientCodec::FillResponse(const ClientContextPtr& ctx, const Protoco
   }
 
   // Try to parse SSE events from the response
+  std::string content = sse_protocol->response.GetContent();
+  if (content.empty()) {
+    TRPC_LOG_ERROR("Empty SSE response content");
+    return false;
+  }
+
+  // Try to parse multiple events first
+  try {
+    auto events = http::sse::SseParser::ParseEvents(content);
+    if (!events.empty()) {
+      // Check if it's a vector of SseEvent pointers
+      if (auto* events_vector = static_cast<std::vector<http::sse::SseEvent>*>(body)) {
+        *events_vector = events;
+        return true;
+      }
+      
+      // Check if it's a single SseEvent pointer (use the first event)
+      if (auto* single_event = static_cast<http::sse::SseEvent*>(body)) {
+        *single_event = events[0];
+        return true;
+      }
+    }
+  } catch (const std::exception& e) {
+    TRPC_LOG_WARN("Failed to parse multiple SSE events: " << e.what());
+  }
+
+  // Fallback to single event parsing
   auto event = sse_protocol->GetSseEvent();
   if (!event) {
     TRPC_LOG_ERROR("Failed to get SSE event from response");
@@ -208,7 +245,7 @@ void HttpSseClientCodec::SetSseResponseHeaders(http::Response* response) {
   }
 
   // Set Content-Type for SSE
-  response->SetContentType("text/event-stream");
+  response->SetMimeType("text/event-stream");
   
   // Set Cache-Control to prevent caching
   response->SetHeader("Cache-Control", "no-cache");
@@ -219,8 +256,8 @@ void HttpSseClientCodec::SetSseResponseHeaders(http::Response* response) {
 
 // HttpSseServerCodec implementation
 int HttpSseServerCodec::ZeroCopyCheck(const ConnectionPtr& conn, NoncontiguousBuffer& in, std::deque<std::any>& out) {
-  // Use the parent HTTP codec to check protocol integrity
-  return HttpServerCodec::ZeroCopyCheck(conn, in, out);
+  // Use the SSE-specific protocol checker
+  return HttpSseZeroCopyCheckRequest(conn, in, out);
 }
 
 bool HttpSseServerCodec::ZeroCopyDecode(const ServerContextPtr& ctx, std::any&& in, ProtocolPtr& out) {
@@ -269,30 +306,26 @@ bool HttpSseServerCodec::ZeroCopyDecode(const ServerContextPtr& ctx, std::any&& 
   //return HttpServerCodec::ZeroCopyEncode(ctx, in, out);
 //}
 bool HttpSseServerCodec::ZeroCopyEncode(const ServerContextPtr& ctx, ProtocolPtr& in, NoncontiguousBuffer& out) {
+  try {
     auto sse_protocol = std::dynamic_pointer_cast<HttpSseResponseProtocol>(in);
     if (!sse_protocol) {
-        TRPC_LOG_ERROR("Failed to cast to HttpSseResponseProtocol");
-        return false;
+      TRPC_LOG_ERROR("Failed to cast to HttpSseResponseProtocol");
+      return false;
     }
 
-    // 1. 设置 SSE 响应头
-     SetSseResponseHeaders(&sse_protocol->response);
+    // Set SSE-specific headers
+    SetSseResponseHeaders(&sse_protocol->response);
 
-    // 2. 将内容写入 NoncontiguousBufferBuilder
-    //NoncontiguousBufferBuilder builder;
-    //const std::string& content = sse_protocol->response.GetContent();
-   // builder.Append(content.data(), content.size());
+    // Serialize the HTTP response to binary format
+    NoncontiguousBuffer buffer;
+    sse_protocol->response.SerializeToString(buffer);
+    out = std::move(buffer);
 
-    // 3. 获取 NoncontiguousBuffer
-   // out = builder.DestructiveGet();
-    NoncontiguousBufferBuilder builder;
-    const std::string& content = sse_protocol->response.GetContent();
-    std::cout << "[ZeroCopyEncode] content.size() = " << content.size() << std::endl;
-    builder.Append(content.data(), content.size());
-    auto buf = builder.DestructiveGet();
-    std::cout << "[ZeroCopyEncode] buf.ByteSize() = " << buf.ByteSize() << std::endl;
-    out = std::move(buf);
     return true;
+  } catch (const std::exception& ex) {
+    TRPC_LOG_ERROR("HTTP SSE encode throw exception: " << ex.what());
+    return false;
+  }
 }
 
 
@@ -310,7 +343,7 @@ void HttpSseServerCodec::SetSseResponseHeaders(http::Response* response) {
   }
 
   // Set Content-Type for SSE
-  response->SetContentType("text/event-stream");
+  response->SetMimeType("text/event-stream");
   
   // Set Cache-Control to prevent caching
   response->SetHeader("Cache-Control", "no-cache");
@@ -338,6 +371,12 @@ bool HttpSseServerCodec::IsValidSseRequest(const http::Request* request) const {
 
   // SSE requests are typically GET requests
   if (request->GetMethod() != "GET") {
+    return false;
+  }
+
+  // Check for other SSE-specific headers
+  std::string cache_control = request->GetHeader("Cache-Control");
+  if (cache_control.find("no-cache") == std::string::npos) {
     return false;
   }
 
