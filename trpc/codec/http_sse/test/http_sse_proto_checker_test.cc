@@ -22,10 +22,34 @@
 
 namespace trpc::test {
 
+namespace {
+class MockConnectionHandler : public ConnectionHandler {
+  Connection* GetConnection() const override { return nullptr; }
+  int CheckMessage(const ConnectionPtr&, NoncontiguousBuffer&, std::deque<std::any>&) override {
+    return PacketChecker::PACKET_FULL;
+  }
+
+  bool HandleMessage(const ConnectionPtr&, std::deque<std::any>&) override { return true; }
+};
+}  // namespace
+
 class HttpSseProtoCheckerTest : public ::testing::Test {
  protected:
-  void SetUp() override {}
+  void SetUp() override {
+    in_.Clear();
+    out_.clear();
+
+    conn_ = MakeRefCounted<Connection>();
+    conn_->SetConnType(ConnectionType::kTcpLong);
+    conn_->SetConnectionHandler(std::make_unique<MockConnectionHandler>());
+  }
+
   void TearDown() override {}
+
+ public:
+  ConnectionPtr conn_;
+  NoncontiguousBuffer in_;
+  std::deque<std::any> out_;
 };
 
 // Test IsValidSseRequest function
@@ -81,7 +105,7 @@ TEST_F(HttpSseProtoCheckerTest, IsValidSseRequest_AcceptHeaderWithMultipleTypes)
 // Test IsValidSseResponse function
 TEST_F(HttpSseProtoCheckerTest, IsValidSseResponse_ValidResponse) {
   auto response = std::make_shared<http::Response>();
-  response->SetContentType("text/event-stream");
+  response->SetMimeType("text/event-stream");
   response->SetHeader("Cache-Control", "no-cache");
   
   bool is_valid = trpc::IsValidSseResponse(response.get());
@@ -90,7 +114,7 @@ TEST_F(HttpSseProtoCheckerTest, IsValidSseResponse_ValidResponse) {
 
 TEST_F(HttpSseProtoCheckerTest, IsValidSseResponse_InvalidContentType) {
   auto response = std::make_shared<http::Response>();
-  response->SetContentType("application/json");
+  response->SetMimeType("application/json");
   response->SetHeader("Cache-Control", "no-cache");
   
   bool is_valid = trpc::IsValidSseResponse(response.get());
@@ -107,7 +131,7 @@ TEST_F(HttpSseProtoCheckerTest, IsValidSseResponse_MissingContentType) {
 
 TEST_F(HttpSseProtoCheckerTest, IsValidSseResponse_InvalidCacheControl) {
   auto response = std::make_shared<http::Response>();
-  response->SetContentType("text/event-stream");
+  response->SetMimeType("text/event-stream");
   response->SetHeader("Cache-Control", "max-age=3600");
   
   bool is_valid = trpc::IsValidSseResponse(response.get());
@@ -116,7 +140,7 @@ TEST_F(HttpSseProtoCheckerTest, IsValidSseResponse_InvalidCacheControl) {
 
 TEST_F(HttpSseProtoCheckerTest, IsValidSseResponse_MissingCacheControl) {
   auto response = std::make_shared<http::Response>();
-  response->SetContentType("text/event-stream");
+  response->SetMimeType("text/event-stream");
   
   bool is_valid = trpc::IsValidSseResponse(response.get());
   EXPECT_FALSE(is_valid);
@@ -129,7 +153,7 @@ TEST_F(HttpSseProtoCheckerTest, IsValidSseResponse_NullResponse) {
 
 TEST_F(HttpSseProtoCheckerTest, IsValidSseResponse_CacheControlWithMultipleValues) {
   auto response = std::make_shared<http::Response>();
-  response->SetContentType("text/event-stream");
+  response->SetMimeType("text/event-stream");
   response->SetHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   
   bool is_valid = trpc::IsValidSseResponse(response.get());
@@ -138,37 +162,23 @@ TEST_F(HttpSseProtoCheckerTest, IsValidSseResponse_CacheControlWithMultipleValue
 
 // Test HttpSseZeroCopyCheckRequest function
 TEST_F(HttpSseProtoCheckerTest, HttpSseZeroCopyCheckRequest_EmptyBuffer) {
-  // Mock connection
-  auto conn = trpc::MakeRefCounted<trpc::Connection>();
-  NoncontiguousBuffer in;
-  std::deque<std::any> out;
-  
-  int result = trpc::HttpSseZeroCopyCheckRequest(conn, in, out);
+  int result = trpc::HttpSseZeroCopyCheckRequest(conn_, in_, out_);
   EXPECT_EQ(result, trpc::kPacketLess);
-  EXPECT_TRUE(out.empty());
+  EXPECT_TRUE(out_.empty());
 }
 
 TEST_F(HttpSseProtoCheckerTest, HttpSseZeroCopyCheckRequest_InvalidHttpRequest) {
-  // Mock connection
-  auto conn = trpc::MakeRefCounted<trpc::Connection>();
-  NoncontiguousBuffer in;
-  
   // Add invalid HTTP request data
   std::string invalid_request = "INVALID HTTP REQUEST DATA\r\n\r\n";
   NoncontiguousBufferBuilder builder;
   builder.Append(invalid_request.data(), invalid_request.size());
-  in = builder.DestructiveGet();
+  in_ = builder.DestructiveGet();
   
-  std::deque<std::any> out;
-  int result = trpc::HttpSseZeroCopyCheckRequest(conn, in, out);
+  int result = trpc::HttpSseZeroCopyCheckRequest(conn_, in_, out_);
   EXPECT_EQ(result, trpc::kPacketError);
 }
 
 TEST_F(HttpSseProtoCheckerTest, HttpSseZeroCopyCheckRequest_ValidHttpRequest) {
-  // Mock connection
-  auto conn = trpc::MakeRefCounted<trpc::Connection>();
-  NoncontiguousBuffer in;
-  
   // Add valid HTTP request data
   std::string valid_request = 
     "GET /events HTTP/1.1\r\n"
@@ -180,64 +190,42 @@ TEST_F(HttpSseProtoCheckerTest, HttpSseZeroCopyCheckRequest_ValidHttpRequest) {
   
   NoncontiguousBufferBuilder builder;
   builder.Append(valid_request.data(), valid_request.size());
-  in = builder.DestructiveGet();
+  in_ = builder.DestructiveGet();
   
-  std::deque<std::any> out;
-  int result = trpc::HttpSseZeroCopyCheckRequest(conn, in, out);
+  int result = trpc::HttpSseZeroCopyCheckRequest(conn_, in_, out_);
   EXPECT_EQ(result, trpc::kPacketFull);
-  EXPECT_FALSE(out.empty());
+  EXPECT_FALSE(out_.empty());
 }
 
 // Test HttpSseZeroCopyCheckResponse function
 TEST_F(HttpSseProtoCheckerTest, HttpSseZeroCopyCheckResponse_EmptyBuffer) {
-  // Mock connection
-  auto conn = trpc::MakeRefCounted<trpc::Connection>();
-  NoncontiguousBuffer in;
-  std::deque<std::any> out;
-  
-  int result = trpc::HttpSseZeroCopyCheckResponse(conn, in, out);
+  int result = trpc::HttpSseZeroCopyCheckResponse(conn_, in_, out_);
   EXPECT_EQ(result, trpc::kPacketLess);
-  EXPECT_TRUE(out.empty());
+  EXPECT_TRUE(out_.empty());
 }
 
 TEST_F(HttpSseProtoCheckerTest, HttpSseZeroCopyCheckResponse_InvalidHttpResponse) {
-  // Mock connection
-  auto conn = trpc::MakeRefCounted<trpc::Connection>();
-  NoncontiguousBuffer in;
-  
   // Add invalid HTTP response data
   std::string invalid_response = "INVALID HTTP RESPONSE DATA\r\n\r\n";
   NoncontiguousBufferBuilder builder;
   builder.Append(invalid_response.data(), invalid_response.size());
-  in = builder.DestructiveGet();
+  in_ = builder.DestructiveGet();
   
-  std::deque<std::any> out;
-  int result = trpc::HttpSseZeroCopyCheckResponse(conn, in, out);
+  int result = trpc::HttpSseZeroCopyCheckResponse(conn_, in_, out_);
   EXPECT_EQ(result, trpc::kPacketError);
 }
 
 TEST_F(HttpSseProtoCheckerTest, HttpSseZeroCopyCheckResponse_ValidHttpResponse) {
-  // Mock connection
-  auto conn = trpc::MakeRefCounted<trpc::Connection>();
-  NoncontiguousBuffer in;
-  
-  // Add valid HTTP response data
-  std::string valid_response = 
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/event-stream\r\n"
-    "Cache-Control: no-cache\r\n"
-    "Connection: keep-alive\r\n"
-    "\r\n"
-    "data: Hello World\r\n\r\n";
+  // Add valid HTTP response data with Content-Length (simplified)
+  std::string valid_response = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nContent-Length:20\r\n\r\ndata: Hello World\r\n\r\n";
   
   NoncontiguousBufferBuilder builder;
   builder.Append(valid_response.data(), valid_response.size());
-  in = builder.DestructiveGet();
+  in_ = builder.DestructiveGet();
   
-  std::deque<std::any> out;
-  int result = trpc::HttpSseZeroCopyCheckResponse(conn, in, out);
+  int result = trpc::HttpSseZeroCopyCheckResponse(conn_, in_, out_);
   EXPECT_EQ(result, trpc::kPacketFull);
-  EXPECT_FALSE(out.empty());
+  EXPECT_FALSE(out_.empty());
 }
 
 // Test edge cases
@@ -254,7 +242,7 @@ TEST_F(HttpSseProtoCheckerTest, EdgeCase_RequestWithExtraHeaders) {
 
 TEST_F(HttpSseProtoCheckerTest, EdgeCase_ResponseWithExtraHeaders) {
   auto response = std::make_shared<http::Response>();
-  response->SetContentType("text/event-stream");
+  response->SetMimeType("text/event-stream");
   response->SetHeader("Cache-Control", "no-cache");
   response->SetHeader("Access-Control-Allow-Origin", "*");
   response->SetHeader("X-Custom-Header", "value");

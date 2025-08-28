@@ -11,7 +11,9 @@
 //
 //
 
-#include "trpc/codec/http_sse/http_sse_codec.h"
+#include "trpc/codec/http_sse/http_sse_protocol.h"
+#include "trpc/codec/http_sse/http_sse_client_codec.h"
+#include "trpc/codec/http_sse/http_sse_server_codec.h"
 #include "trpc/codec/http_sse/http_sse_proto_checker.h"
 
 #include <gtest/gtest.h>

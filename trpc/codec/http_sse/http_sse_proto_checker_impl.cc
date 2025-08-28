@@ -13,6 +13,8 @@
 
 #include "trpc/codec/http_sse/http_sse_proto_checker.h"
 
+#include <algorithm>
+
 #include "trpc/codec/http/http_proto_checker.h"
 #include "trpc/util/log/logging.h"
 
@@ -69,8 +71,9 @@ bool IsValidSseRequest(const http::Request* request) {
     return false;
   }
 
-  // Check if Accept header includes text/event-stream
+  // Check if Accept header includes text/event-stream (case-insensitive)
   std::string accept = request->GetHeader("Accept");
+  std::transform(accept.begin(), accept.end(), accept.begin(), ::tolower);
   if (accept.find("text/event-stream") == std::string::npos) {
     return false;
   }
@@ -88,14 +91,16 @@ bool IsValidSseResponse(const http::Response* response) {
     return false;
   }
 
-  // Check if Content-Type is text/event-stream
+  // Check if Content-Type is text/event-stream (case-insensitive)
   std::string content_type = response->GetHeader("Content-Type");
+  std::transform(content_type.begin(), content_type.end(), content_type.begin(), ::tolower);
   if (content_type.find("text/event-stream") == std::string::npos) {
     return false;
   }
 
-  // Check if Cache-Control is set to no-cache
+  // Check if Cache-Control is set to no-cache (case-insensitive)
   std::string cache_control = response->GetHeader("Cache-Control");
+  std::transform(cache_control.begin(), cache_control.end(), cache_control.begin(), ::tolower);
   if (cache_control.find("no-cache") == std::string::npos) {
     return false;
   }

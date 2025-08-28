@@ -25,7 +25,8 @@
 #include "trpc/codec/http/http_server_codec.h"
 
 // codec http_sse
-#include "trpc/codec/http_sse/http_sse_codec.h"
+#include "trpc/codec/http_sse/http_sse_client_codec.h"
+#include "trpc/codec/http_sse/http_sse_server_codec.h"
 
 // codec trpc_http
 // #include "trpc/codec/trpc_http/trpc_http_server_codec.h"
