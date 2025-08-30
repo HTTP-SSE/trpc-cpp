@@ -16,7 +16,8 @@
 #include "trpc/util/http/request.h"
 #include "trpc/util/http/response.h"
 #include "trpc/util/http/util.h"
-
+#include "trpc/codec/http_sse/http_sse_server_codec.h"
+#include "trpc/codec/http_sse/http_sse_protocol.h"
 namespace trpc::stream {
 
 namespace {
@@ -145,5 +146,103 @@ size_t HttpWriteStream::Capacity() const { return GetConnectionFromContext(conte
 void HttpWriteStream::SetCapacity(size_t capacity) {
   GetConnectionFromContext(context_)->SetSendQueueCapacity(capacity);
 }
+// Simple SSE stream writer for server side.
+// Usage:
+//   SseStreamWriter writer(context_ptr);
+//   writer.WriteHeader();            // optional - WriteEvent/WriteBuffer will auto-call WriteHeader()
+//   writer.WriteEvent(sse_event);    // send one SSE event (wrapped as chunked piece)
+//   writer.WriteBuffer(buf);         // send pre-serialized bytes (business custom buffer)
+//   writer.WriteDone();              // finish chunked response
+//   writer.Close();                  // close connection
 
+  // Send SSE response header (Content-Type: text/event-stream, Cache-Control: no-cache, chunked)
+  Status SseStreamWriter::WriteHeader() {
+    if (state_ & kHeaderWritten) return kSuccStatus;
+
+    NoncontiguousBufferBuilder builder;
+    http::Response sse_rsp;
+    sse_rsp.SetStatus(http::Response::StatusCode::kOk);
+    // Use codec helper to set SSE-specific headers (reuse centralized logic)
+    // HttpSseServerCodec::SetSseResponseHeaders is an instance method, so create a codec object and call it.
+    ::trpc::HttpSseServerCodec codec;
+    codec.SetSseResponseHeaders(&sse_rsp);
+    // use chunked transfer for SSE long polling/streaming
+    sse_rsp.SetHeader(http::kHeaderTransferEncoding, http::kTransferEncodingChunked);
+
+    sse_rsp.SerializeHeaderToString(builder);
+
+    // Send header and set context to streaming mode (SetResponse(false))
+    return ContextStatusToStreamStatus(context_->SendResponse(builder.DestructiveGet()), [&]() {
+      state_ |= kHeaderWritten;
+      context_->SetResponse(false);  // prevent framework from auto-sending a final reply
+    });
+  }
+
+
+  Status SseStreamWriter::WriteEvent(const http::sse::SseEvent& ev) {
+   // ensure header is written
+   if (!(state_ & kHeaderWritten)) {
+     Status s = WriteHeader();
+     if (!s.OK()) return s;
+   }
+
+   // use HttpSseResponseProtocol to serialize the SSE event
+   HttpSseResponseProtocol proto;
+   proto.SetSseEvent(ev);  // this sets response.content = ev.ToString(), and MIME type
+
+   const std::string& payload = proto.response.GetContent();
+ 
+   // wrap payload as HTTP chunk
+   NoncontiguousBufferBuilder builder;
+   builder.Append(HttpChunkHeader(payload.size()));
+   builder.Append(CreateBufferSlow(payload));
+   builder.Append(http::kEndOfChunkMarker);
+
+   // send chunk
+   return ContextStatusToStreamStatus(context_->SendResponse(builder.DestructiveGet()), [&]() {
+     // success callback if needed
+  });
+}
+
+
+  // Directly send a pre-constructed buffer (business may have serialized SSE text already).
+  // We will wrap it as a chunked piece.
+  Status SseStreamWriter::WriteBuffer(NoncontiguousBuffer&& buf) {
+    if (!(state_ & kHeaderWritten)) {
+      Status s = WriteHeader();
+      if (!s.OK()) return s;
+    }
+
+    size_t payload_size = buf.ByteSize();
+    NoncontiguousBufferBuilder builder;
+    builder.Append(HttpChunkHeader(payload_size));
+    builder.Append(std::move(buf));
+    builder.Append(http::kEndOfChunkMarker);
+
+    return ContextStatusToStreamStatus(context_->SendResponse(builder.DestructiveGet()), [&]() {});
+  }
+
+  // Send chunked end (end-of-chunked-response marker)
+  Status SseStreamWriter::WriteDone() {
+    if (state_ & kWriteDone) return kSuccStatus;
+    return ContextStatusToStreamStatus(context_->SendResponse(CreateBufferSlow(http::kEndOfChunkedResponseMarker)),
+                                       [&]() { state_ |= kWriteDone; });
+  }
+
+  // Close: best-effort WriteDone then close underlying connection
+  void SseStreamWriter::Close() {
+    try {
+      WriteDone();
+    } catch (...) {
+    }
+    if (context_) {
+      context_->CloseConnection();
+    }
+  }
+
+  // capacity helpers (reuse existing Connection helpers)
+  size_t SseStreamWriter::Capacity() const { return GetConnectionFromContext(context_)->GetSendQueueCapacity(); }
+  void SseStreamWriter::SetCapacity(size_t capacity) { GetConnectionFromContext(context_)->SetSendQueueCapacity(capacity); }
+
+// --- END: SseStreamWriter ---
 }  // namespace trpc::stream

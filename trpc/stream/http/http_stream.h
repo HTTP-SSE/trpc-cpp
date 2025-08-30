@@ -212,5 +212,24 @@ class HttpWriteStream {
 using TransientHttpReadStream = detail::TransientWrapper<HttpReadStream>;
 /// @private For internal use purpose only.
 using TransientHttpWriteStream = detail::TransientWrapper<HttpWriteStream>;
+// ---------------- SSE Stream Writer ----------------
+class SseStreamWriter {
+ public:
+  explicit SseStreamWriter(ServerContext* ctx) : context_(ctx) {}
+  ~SseStreamWriter() { Close(); }
 
+  Status WriteHeader();
+  Status WriteEvent(const http::sse::SseEvent& ev);
+  Status WriteBuffer(NoncontiguousBuffer&& buf);
+  Status WriteDone();
+  void Close();
+
+  size_t Capacity() const;
+  void SetCapacity(size_t capacity);
+
+ private:
+  enum StateFlags { kHeaderWritten = 1 << 0, kWriteDone = 1 << 1 };
+  ServerContext* context_{nullptr};
+  uint32_t state_{0};
+};
 }  // namespace trpc::stream

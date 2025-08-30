@@ -127,6 +127,7 @@ cc_library(
         "//trpc/server:server_context",
         "//trpc/stream:stream_handler",
         "//trpc/util/http:util",
+       
     ],
 )
 
@@ -137,6 +138,8 @@ cc_library(
         ":http_stream_hdrs",
         "//trpc/util/http:request",
         "//trpc/util/http:response",
+        "//trpc/codec/http_sse:http_sse_protocol",
+        "//trpc/codec/http_sse:http_sse_server_codec",
     ],
 )
 
@@ -149,6 +152,24 @@ cc_test(
         "//trpc/coroutine/testing:fiber_runtime_test",
         "//trpc/serialization:trpc_serialization",
         "//trpc/server:http_service",
+        "//trpc/server/testing:server_context_testing",
+        "//trpc/transport/server/testing:server_transport_testing",
+        "//trpc/util/http:request",
+        "//trpc/util/http:response",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+cc_test(
+    name = "http_sse_stream_test",
+    srcs = ["http_sse_stream_test.cc"],
+    deps = [
+        ":http_stream",
+        "//trpc/codec:codec_manager",
+        "//trpc/coroutine/testing:fiber_runtime_test",
+        "//trpc/serialization:trpc_serialization",
+        "//trpc/server:http_service",
+        "//trpc/util/http/sse:http_sse",
         "//trpc/server/testing:server_context_testing",
         "//trpc/transport/server/testing:server_transport_testing",
         "//trpc/util/http:request",
