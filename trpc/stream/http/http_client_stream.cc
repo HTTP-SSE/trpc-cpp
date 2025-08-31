@@ -197,4 +197,108 @@ HttpClientStreamReaderWriter& HttpClientStreamReaderWriter::operator=(HttpClient
   return *this;
 }
 
+// SSE-specific method implementations
+Status HttpClientStream::ConfigureSseMode() {
+  if (sse_mode_) {
+    return kSuccStatus;  // Already configured
+  }
+
+  if (!req_protocol_) {
+    return kStreamStatusClientNetworkError;
+  }
+
+  // Set SSE-specific headers
+  req_protocol_->request->SetHeader("Accept", "text/event-stream");
+  req_protocol_->request->SetHeader("Cache-Control", "no-cache");
+  req_protocol_->request->SetHeader("Connection", "keep-alive");
+
+  sse_mode_ = true;
+  return kSuccStatus;
+}
+
+Status HttpClientStream::ReadSseEvent(http::sse::SseEvent& event, size_t max_bytes) {
+  return ReadSseEvent(event, max_bytes, default_deadline_);
+}
+
+template <typename Clock, typename Dur>
+Status HttpClientStream::ReadSseEvent(http::sse::SseEvent& event, size_t max_bytes,
+                                      const std::chrono::time_point<Clock, Dur>& expiry) {
+  if (!sse_mode_) {
+    return kStreamStatusClientNetworkError;
+  }
+
+  // Read data from the stream
+  NoncontiguousBuffer buffer;
+  Status status = Read(buffer, max_bytes, expiry);
+  if (!status.OK()) {
+    return status;
+  }
+
+  // Convert buffer to string and append to SSE buffer
+  std::string new_data = FlattenSlow(buffer);
+  sse_buffer_ += new_data;
+
+  // Try to parse complete SSE events
+  std::vector<http::sse::SseEvent> events;
+  if (!ParseSseEvents(buffer, events)) {
+    return kStreamStatusClientNetworkError;
+  }
+
+  if (events.empty()) {
+    // No complete event found, continue reading
+    return ReadSseEvent(event, max_bytes, expiry);
+  }
+
+  // Return the first complete event
+  event = events[0];
+  
+  // Remove the parsed event data from the buffer
+  // This is a simplified approach - in a production implementation,
+  // you'd want to track exactly how much data was consumed
+  size_t event_end = sse_buffer_.find("\n\n");
+  if (event_end != std::string::npos) {
+    sse_buffer_ = sse_buffer_.substr(event_end + 2);
+  }
+
+  return kSuccStatus;
+}
+
+template <typename T>
+Status HttpClientStream::ProcessSseEvents(const std::function<bool(const http::sse::SseEvent&)>& callback, const T& expiry) {
+  if (!sse_mode_ || !callback) {
+    return kStreamStatusClientNetworkError;
+  }
+
+  while (true) {
+    http::sse::SseEvent event;
+    Status status = ReadSseEvent(event, 8192, expiry);
+    
+    if (status.GetFrameworkRetCode() == kStreamStatusReadEof.GetFrameworkRetCode()) {
+      break;  // End of stream
+    } else if (!status.OK()) {
+      return status;  // Error occurred
+    }
+
+    // Call the callback function
+    if (!callback(event)) {
+      break;  // Callback requested to stop
+    }
+  }
+
+  return kSuccStatus;
+}
+
+bool HttpClientStream::ParseSseEvents(const NoncontiguousBuffer& buffer, std::vector<http::sse::SseEvent>& events) {
+  try {
+    // Convert buffer to string
+    std::string data = FlattenSlow(buffer);
+    
+    // Use the existing SSE parser
+    events = trpc::http::sse::SseParser::ParseEvents(data);
+    return true;
+  } catch (const std::exception& e) {
+    return false;
+  }
+}
+
 }  // namespace trpc::stream

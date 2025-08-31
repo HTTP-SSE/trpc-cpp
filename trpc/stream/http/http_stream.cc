@@ -146,4 +146,61 @@ void HttpWriteStream::SetCapacity(size_t capacity) {
   GetConnectionFromContext(context_)->SetSendQueueCapacity(capacity);
 }
 
+// SSE-specific method implementations
+Status HttpWriteStream::ConfigureSseMode() {
+  if (sse_mode_) {
+    return kSuccStatus;  // Already configured
+  }
+
+  // Set SSE-specific headers
+  response_->SetHeader("Content-Type", "text/event-stream");
+  response_->SetHeader("Cache-Control", "no-cache");
+  response_->SetHeader("Connection", "keep-alive");
+  response_->SetHeader("Access-Control-Allow-Origin", "*");
+  response_->SetHeader("Access-Control-Allow-Headers", "Cache-Control");
+
+  // Enable chunked transfer encoding for SSE
+  response_->SetHeader("Transfer-Encoding", "chunked");
+  content_length_ = kChunked;
+
+  sse_mode_ = true;
+  return kSuccStatus;
+}
+
+Status HttpWriteStream::WriteSseEvent(const http::sse::SseEvent& event) {
+  if (!sse_mode_) {
+    return kStreamStatusServerNetworkError;
+  }
+
+  // Serialize the SSE event to string format
+  std::string event_data = event.ToString();
+  
+  // Write the event data
+  return Write(CreateBufferSlow(event_data));
+}
+
+Status HttpWriteStream::WriteSseComment(const std::string& comment) {
+  if (!sse_mode_) {
+    return kStreamStatusServerNetworkError;
+  }
+
+  // Format SSE comment: ": comment\n\n"
+  std::string comment_data = ": " + comment + "\n\n";
+  
+  // Write the comment data
+  return Write(CreateBufferSlow(comment_data));
+}
+
+Status HttpWriteStream::WriteSseRetry(uint32_t retry_timeout) {
+  if (!sse_mode_) {
+    return kStreamStatusServerNetworkError;
+  }
+
+  // Format SSE retry directive: "retry: timeout\n\n"
+  std::string retry_data = "retry: " + std::to_string(retry_timeout) + "\n\n";
+  
+  // Write the retry data
+  return Write(CreateBufferSlow(retry_data));
+}
+
 }  // namespace trpc::stream

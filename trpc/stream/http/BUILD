@@ -36,6 +36,8 @@ cc_library(
         "//trpc/util/http:common",
         "//trpc/util/http:reply",
         "//trpc/util/http:util",
+        "//trpc/util/http/sse:http_sse",
+        "//trpc/util/http/sse:http_sse_parser",
     ],
 )
 
@@ -46,6 +48,7 @@ cc_test(
         ":http_client_stream",
         ":http_client_stream_handler",
         "//trpc/coroutine/testing:fiber_runtime_test",
+        "//trpc/util/http/sse:http_sse",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -127,6 +130,7 @@ cc_library(
         "//trpc/server:server_context",
         "//trpc/stream:stream_handler",
         "//trpc/util/http:util",
+        "//trpc/util/http/sse:http_sse",
     ],
 )
 
@@ -137,6 +141,7 @@ cc_library(
         ":http_stream_hdrs",
         "//trpc/util/http:request",
         "//trpc/util/http:response",
+        "//trpc/util/http/sse:http_sse",
     ],
 )
 
@@ -153,6 +158,7 @@ cc_test(
         "//trpc/transport/server/testing:server_transport_testing",
         "//trpc/util/http:request",
         "//trpc/util/http:response",
+        "//trpc/util/http/sse:http_sse",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

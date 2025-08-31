@@ -19,6 +19,7 @@
 #include "trpc/stream/http/common.h"
 #include "trpc/stream/stream_handler.h"
 #include "trpc/util/buffer/noncontiguous_buffer.h"
+#include "trpc/util/http/sse/sse_event.h"
 
 namespace trpc::http {
 
@@ -192,6 +193,34 @@ class HttpWriteStream {
     }
   }
 
+  // SSE-specific methods
+  /// @brief Configures the stream for Server-Sent Events (SSE) mode.
+  /// @return Returns kSuccStatus on success, kStreamStatusServerNetworkError on error.
+  /// @note This method sets SSE-specific headers and enables SSE mode for the stream.
+  Status ConfigureSseMode();
+
+  /// @brief Sends an SSE event.
+  /// @param event The SSE event to send.
+  /// @return Returns kSuccStatus on success, kStreamStatusServerNetworkError on error, kStreamStatusServerWriteTimeout
+  ///         on timeout.
+  Status WriteSseEvent(const http::sse::SseEvent& event);
+
+  /// @brief Sends an SSE comment (keep-alive message).
+  /// @param comment The comment text to send.
+  /// @return Returns kSuccStatus on success, kStreamStatusServerNetworkError on error, kStreamStatusServerWriteTimeout
+  ///         on timeout.
+  Status WriteSseComment(const std::string& comment);
+
+  /// @brief Sends an SSE retry directive.
+  /// @param retry_timeout The retry timeout in milliseconds.
+  /// @return Returns kSuccStatus on success, kStreamStatusServerNetworkError on error, kStreamStatusServerWriteTimeout
+  ///         on timeout.
+  Status WriteSseRetry(uint32_t retry_timeout);
+
+  /// @brief Checks if the stream is configured for SSE mode.
+  /// @return Returns true if SSE mode is enabled, false otherwise.
+  bool IsSseMode() const { return sse_mode_; }
+
  private:
   constexpr static ssize_t kChunked = -1;
 
@@ -206,6 +235,7 @@ class HttpWriteStream {
   ServerContext* context_;
   ssize_t content_length_{0};
   size_t written_size_{0};
+  bool sse_mode_{false};  ///< Whether the stream is configured for SSE mode
 };
 
 /// @private For internal use purpose only.

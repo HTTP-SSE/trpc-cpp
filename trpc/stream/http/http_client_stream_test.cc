@@ -162,4 +162,134 @@ TEST(HttpClientStreamTest, CreateStreamReaderWriter) {
   });
 }
 
+// SSE-specific tests for HttpClientStream
+TEST(HttpClientStreamTest, ConfigureSseMode) {
+  RunAsFiber([&]() {
+    stream::HttpClientStreamPtr stream = GetClientStream();
+    
+    // Test that SSE mode is not enabled initially
+    ASSERT_FALSE(stream->IsSseMode());
+
+    // Set up HTTP request protocol (required for ConfigureSseMode)
+    HttpRequestProtocol protocol{std::make_shared<http::Request>()};
+    stream->SetHttpRequestProtocol(&protocol);
+
+    // Configure SSE mode
+    Status status = stream->ConfigureSseMode();
+    ASSERT_TRUE(status.OK());
+    ASSERT_TRUE(stream->IsSseMode());
+
+    // Test that configuring again doesn't fail
+    status = stream->ConfigureSseMode();
+    ASSERT_TRUE(status.OK());
+    ASSERT_TRUE(stream->IsSseMode());
+
+    stream->Close();
+  });
+}
+
+TEST(HttpClientStreamTest, ParseSseEvents) {
+  RunAsFiber([&]() {
+    stream::HttpClientStreamPtr stream = GetClientStream();
+    
+    // Test SSE event parsing
+    std::string sse_data = "event: test\n"
+                           "data: Hello, SSE World!\n"
+                           "id: 123\n"
+                           "retry: 5000\n\n";
+    
+    NoncontiguousBuffer buffer;
+    buffer.Append(CreateBufferSlow(sse_data));
+    
+    std::vector<trpc::http::sse::SseEvent> events;
+    bool success = stream->ParseSseEvents(buffer, events);
+    ASSERT_TRUE(success);
+    ASSERT_EQ(events.size(), 1);
+    
+    const auto& event = events[0];
+    ASSERT_EQ(event.event_type, "test");
+    ASSERT_EQ(event.data, "Hello, SSE World!");
+    ASSERT_EQ(event.id.value(), "123");
+    ASSERT_EQ(event.retry.value(), 5000);
+
+    stream->Close();
+  });
+}
+
+TEST(HttpClientStreamTest, ParseMultipleSseEvents) {
+  RunAsFiber([&]() {
+    stream::HttpClientStreamPtr stream = GetClientStream();
+    
+    // Test parsing multiple SSE events
+    std::string sse_data = "event: first\n"
+                           "data: First event\n"
+                           "id: 1\n\n"
+                           "event: second\n"
+                           "data: Second event\n"
+                           "id: 2\n\n";
+    
+    NoncontiguousBuffer buffer;
+    buffer.Append(CreateBufferSlow(sse_data));
+    
+    std::vector<trpc::http::sse::SseEvent> events;
+    bool success = stream->ParseSseEvents(buffer, events);
+    ASSERT_TRUE(success);
+    ASSERT_EQ(events.size(), 2);
+    
+    ASSERT_EQ(events[0].event_type, "first");
+    ASSERT_EQ(events[0].data, "First event");
+    ASSERT_EQ(events[0].id.value(), "1");
+    
+    ASSERT_EQ(events[1].event_type, "second");
+    ASSERT_EQ(events[1].data, "Second event");
+    ASSERT_EQ(events[1].id.value(), "2");
+
+    stream->Close();
+  });
+}
+
+TEST(HttpClientStreamTest, ParseSseEventWithOnlyData) {
+  RunAsFiber([&]() {
+    stream::HttpClientStreamPtr stream = GetClientStream();
+    
+    // Test parsing SSE event with only data
+    std::string sse_data = "data: Simple message\n\n";
+    
+    NoncontiguousBuffer buffer;
+    buffer.Append(CreateBufferSlow(sse_data));
+    
+    std::vector<trpc::http::sse::SseEvent> events;
+    bool success = stream->ParseSseEvents(buffer, events);
+    ASSERT_TRUE(success);
+    ASSERT_EQ(events.size(), 1);
+    
+    const auto& event = events[0];
+    ASSERT_TRUE(event.event_type.empty());
+    ASSERT_EQ(event.data, "Simple message");
+    ASSERT_FALSE(event.id.has_value());
+    ASSERT_FALSE(event.retry.has_value());
+
+    stream->Close();
+  });
+}
+
+TEST(HttpClientStreamTest, SseEventSerialization) {
+  RunAsFiber([&]() {
+    // Test that SSE events can be serialized correctly
+    trpc::http::sse::SseEvent event;
+    event.event_type = "test";
+    event.data = "Test message";
+    event.id = "123";
+    event.retry = 5000;
+    
+    std::string serialized = event.ToString();
+    std::string expected = "event: test\n"
+                           "data: Test message\n"
+                           "id: 123\n"
+                           "retry: 5000\n\n";
+    
+    ASSERT_EQ(serialized, expected);
+  });
+}
+
 }  // namespace trpc::testing
